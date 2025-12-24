@@ -1,0 +1,894 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebBlender Pro v3.4 (Fixed)</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        /* Pro UI Overrides */
+        :root {
+            --bg-dark: #1d1d1d;
+            --bg-panel: #282828;
+            --bg-header: #303030;
+            --accent: #eb7100;
+            --text-main: #e6e6e6;
+            --border: #3e3e3e;
+        }
+        
+        body { background-color: var(--bg-dark); color: var(--text-main); font-family: 'Segoe UI', sans-serif; overflow: hidden; }
+        
+        /* Tight Scrollbars */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: var(--bg-dark); }
+        ::-webkit-scrollbar-thumb { background: #555; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #777; }
+
+        /* Pro Inputs */
+        .pro-input {
+            background-color: #1a1a1a; border: 1px solid var(--border); border-radius: 2px;
+            padding: 2px 6px; font-size: 0.75rem; color: white; width: 100%; transition: border-color 0.1s;
+        }
+        .pro-input:focus { outline: none; border-color: var(--accent); }
+
+        /* Pro Buttons */
+        .pro-btn {
+            background: transparent; border: 1px solid transparent; border-radius: 3px;
+            cursor: pointer; color: #ccc; transition: all 0.1s; display: flex; align-items: center; justify-content: center;
+        }
+        .pro-btn:hover { background-color: #444; color: white; }
+        .pro-btn.active { background-color: #4772b3; color: white; border-color: #2e5691; }
+        .pro-btn-primary { background-color: #444; color: white; border: 1px solid #222; }
+        .pro-btn-primary:hover { background-color: #555; }
+
+        /* Range Sliders */
+        input[type=range] {
+            -webkit-appearance: none; width: 100%; background: transparent;
+        }
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none; height: 12px; width: 12px; border-radius: 50%;
+            background: var(--accent); cursor: pointer; margin-top: -5px;
+        }
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%; height: 2px; cursor: pointer; background: #555;
+        }
+
+        /* Tabs */
+        .tab-btn {
+            padding: 6px 12px; font-size: 0.75rem; font-weight: bold; color: #888; cursor: pointer; border-bottom: 2px solid transparent;
+        }
+        .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+        
+        /* Canvas for texture */
+        canvas#texture-canvas { image-rendering: pixelated; }
+
+        #ai-panel {
+            position: absolute; bottom: 160px; right: 20px; width: 280px; height: 300px;
+            background: var(--bg-panel); border: 1px solid var(--border); border-radius: 4px;
+            display: none; flex-direction: column; z-index: 100; box-shadow: 0 4px 20px rgba(0,0,0,0.6);
+        }
+    </style>
+    
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/",
+                "cannon-es": "https://cdn.jsdelivr.net/npm/cannon-es@0.20.0/dist/cannon-es.js"
+            }
+        }
+    </script>
+</head>
+<body class="flex flex-col h-screen select-none text-xs">
+
+    <!-- HIDDEN FILE INPUT -->
+    <input type="file" id="file-input" class="hidden" accept=".glb,.gltf,.obj">
+
+    <!-- HEADER -->
+    <header class="h-8 bg-[#303030] border-b border-[#111] flex items-center px-2 justify-between shrink-0 z-20">
+        <div class="flex items-center gap-3">
+            <div class="flex items-center gap-2 mr-2">
+                <i class="fa-solid fa-cube text-[#eb7100]"></i>
+                <span class="font-bold text-gray-200">WebBlender Pro</span>
+            </div>
+            
+            <!-- Menus -->
+            <div class="flex">
+                <div class="relative group">
+                    <button class="px-3 py-1 hover:bg-[#444] rounded-sm text-gray-300">File</button>
+                    <div class="absolute top-full left-0 w-40 bg-[#282828] border border-[#111] shadow-xl hidden group-hover:block z-50 py-1">
+                        <button onclick="app.triggerImport()" class="block w-full text-left px-3 py-1.5 hover:bg-[#4772b3] hover:text-white text-gray-300">Import Model</button>
+                        <div class="h-[1px] bg-[#3e3e3e] my-1"></div>
+                        <button onclick="app.exportScene('glb')" class="block w-full text-left px-3 py-1.5 hover:bg-[#4772b3] hover:text-white text-gray-300">Export .GLB</button>
+                        <button onclick="app.exportScene('obj')" class="block w-full text-left px-3 py-1.5 hover:bg-[#4772b3] hover:text-white text-gray-300">Export .OBJ</button>
+                    </div>
+                </div>
+
+                <div class="relative group">
+                    <button class="px-3 py-1 hover:bg-[#444] rounded-sm text-gray-300">Edit</button>
+                    <div class="absolute top-full left-0 w-40 bg-[#282828] border border-[#111] shadow-xl hidden group-hover:block z-50 py-1">
+                        <button onclick="app.copySelection()" class="block w-full text-left px-3 py-1.5 hover:bg-[#4772b3] hover:text-white text-gray-300 flex justify-between items-center">
+                            <span>Copy</span> <span class="text-gray-500 text-[9px]">Ctrl+C</span>
+                        </button>
+                        <button onclick="app.pasteSelection()" class="block w-full text-left px-3 py-1.5 hover:bg-[#4772b3] hover:text-white text-gray-300 flex justify-between items-center">
+                            <span>Paste</span> <span class="text-gray-500 text-[9px]">Ctrl+V</span>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="relative group">
+                    <button class="px-3 py-1 hover:bg-[#444] rounded-sm text-gray-300">Add</button>
+                    <div class="absolute top-full left-0 w-40 bg-[#282828] border border-[#111] shadow-xl hidden group-hover:block z-50 py-1">
+                        <div class="px-3 py-1 text-[10px] text-gray-500 font-bold uppercase">Mesh</div>
+                        <button onclick="app.addMesh('cube')" class="block w-full text-left px-3 py-1.5 hover:bg-[#4772b3] hover:text-white text-gray-300">Cube</button>
+                        <button onclick="app.addMesh('sphere')" class="block w-full text-left px-3 py-1.5 hover:bg-[#4772b3] hover:text-white text-gray-300">Sphere</button>
+                        <button onclick="app.addMesh('plane')" class="block w-full text-left px-3 py-1.5 hover:bg-[#4772b3] hover:text-white text-gray-300">Plane</button>
+                        <div class="h-[1px] bg-[#3e3e3e] my-1"></div>
+                        <div class="px-3 py-1 text-[10px] text-gray-500 font-bold uppercase">Effects</div>
+                        <button onclick="app.addParticleSystem()" class="block w-full text-left px-3 py-1.5 hover:bg-[#4772b3] hover:text-white text-gray-300 flex justify-between">
+                            <span>Particle Emitter</span> <i class="fa-solid fa-sparkles text-[10px] pt-1"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="flex bg-[#111] rounded p-0.5 gap-0.5">
+            <button id="mode-object" onclick="app.setMode('object')" class="px-3 py-0.5 rounded-sm bg-[#4772b3] text-white">Object</button>
+            <button id="mode-sculpt" onclick="app.setMode('sculpt')" class="px-3 py-0.5 rounded-sm hover:bg-[#3d3d3d] text-gray-400">Sculpt</button>
+            <button id="mode-paint" onclick="app.setMode('paint')" class="px-3 py-0.5 rounded-sm hover:bg-[#3d3d3d] text-gray-400">Paint</button>
+        </div>
+
+        <button onclick="app.toggleAI()" class="text-gray-400 hover:text-white px-2"><i class="fa-solid fa-robot"></i></button>
+    </header>
+
+    <!-- MAIN AREA -->
+    <div class="flex flex-1 overflow-hidden">
+        
+        <!-- TOOLBAR -->
+        <div class="w-10 bg-[#282828] border-r border-[#111] flex flex-col items-center py-2 gap-1 z-10">
+            <div id="toolbar-object" class="flex flex-col gap-1 items-center w-full">
+                <div id="tool-select" class="pro-btn w-8 h-8 active" title="Select (Q)" onclick="app.setTransformMode('select')"><i class="fa-solid fa-arrow-pointer"></i></div>
+                <div id="tool-translate" class="pro-btn w-8 h-8" title="Move (G)" onclick="app.setTransformMode('translate')"><i class="fa-solid fa-arrows-up-down-left-right"></i></div>
+                <div id="tool-rotate" class="pro-btn w-8 h-8" title="Rotate (R)" onclick="app.setTransformMode('rotate')"><i class="fa-solid fa-rotate"></i></div>
+                <div id="tool-scale" class="pro-btn w-8 h-8" title="Scale (S)" onclick="app.setTransformMode('scale')"><i class="fa-solid fa-expand"></i></div>
+            </div>
+            <div class="h-[1px] w-6 bg-[#3e3e3e] my-1"></div>
+            <button onclick="app.deleteSelected()" class="pro-btn w-8 h-8 text-red-400 hover:text-red-200"><i class="fa-solid fa-trash"></i></button>
+        </div>
+
+        <!-- VIEWPORT -->
+        <div class="flex-1 relative flex flex-col">
+            <div id="viewport" class="flex-1 bg-[#1d1d1d] relative overflow-hidden">
+                <div class="absolute top-2 left-2 text-gray-500 pointer-events-none z-10">
+                    <div class="text-gray-300 font-bold">Perspective</div>
+                    <div id="mode-indicator" class="text-[#eb7100]">Object Mode</div>
+                </div>
+                <div class="absolute top-2 right-2 flex flex-col gap-1 z-10">
+                    <button onclick="app.zoom(1)" class="w-6 h-6 bg-[#282828] border border-black hover:bg-[#444] text-white rounded-sm flex items-center justify-center"><i class="fa-solid fa-plus text-[10px]"></i></button>
+                    <button onclick="app.zoom(-1)" class="w-6 h-6 bg-[#282828] border border-black hover:bg-[#444] text-white rounded-sm flex items-center justify-center"><i class="fa-solid fa-minus text-[10px]"></i></button>
+                </div>
+            </div>
+
+            <!-- TIMELINE -->
+            <div class="h-32 bg-[#252525] border-t border-black flex flex-col">
+                <div class="h-6 bg-[#2d2d2d] border-b border-[#111] flex items-center px-2 justify-between">
+                    <span class="font-bold text-gray-400"><i class="fa-solid fa-film mr-2"></i>Timeline</span>
+                    <div class="flex items-center gap-2">
+                        <button onclick="app.togglePlayback()" id="play-btn" class="pro-btn w-6 h-5"><i class="fa-solid fa-play text-[10px]"></i></button>
+                        <button onclick="app.stopPlayback()" class="pro-btn w-6 h-5"><i class="fa-solid fa-stop text-[10px]"></i></button>
+                        <div class="w-[1px] h-4 bg-[#444]"></div>
+                        <span class="text-gray-400">Frame:</span>
+                        <input type="number" id="current-frame-disp" value="0" class="pro-input w-12 text-center" onchange="app.scrubTimeline(this.value)">
+                    </div>
+                    <button onclick="app.addKeyframe()" class="px-2 py-0.5 bg-[#2d2d2d] border border-[#444] rounded hover:bg-[#444] text-gray-300 text-[10px] flex items-center gap-1">
+                        <i class="fa-solid fa-gem text-[#eb7100]"></i> Keyframe
+                    </button>
+                </div>
+                <div class="flex-1 p-2 relative">
+                    <div id="keyframe-track" class="absolute top-6 left-2 right-2 h-4 pointer-events-none"></div>
+                    <input type="range" id="timeline-scrubber" min="0" max="100" value="0" step="1" class="w-full mt-4" oninput="app.scrubTimeline(this.value)">
+                    <div class="flex justify-between text-[10px] text-gray-600 mt-1 px-1">
+                        <span>0</span><span>25</span><span>50</span><span>75</span><span>100</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- PROPERTIES PANEL -->
+        <div class="w-64 bg-[#282828] border-l border-[#111] flex flex-col z-10">
+            <div class="flex border-b border-[#111] bg-[#222]">
+                <div class="tab-btn active" id="tab-obj" onclick="app.switchTab('obj')"><i class="fa-solid fa-cube"></i></div>
+                <div class="tab-btn" id="tab-mat" onclick="app.switchTab('mat')"><i class="fa-solid fa-palette"></i></div>
+                <div class="tab-btn" id="tab-part" onclick="app.switchTab('part')"><i class="fa-solid fa-sparkles"></i></div>
+            </div>
+
+            <div id="properties-content" class="flex-1 overflow-y-auto p-3 opacity-50 pointer-events-none">
+                
+                <!-- Object Tab -->
+                <div id="panel-obj" class="flex flex-col gap-4">
+                    <div class="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Transform</div>
+                    <div class="grid grid-cols-[40px_1fr] gap-2 items-center">
+                        <span class="text-gray-400">Loc</span>
+                        <div class="grid grid-cols-3 gap-1">
+                            <input type="number" id="inp-pos-x" step="0.1" class="pro-input text-red-400" onchange="app.updateObjectFromUI()">
+                            <input type="number" id="inp-pos-y" step="0.1" class="pro-input text-green-400" onchange="app.updateObjectFromUI()">
+                            <input type="number" id="inp-pos-z" step="0.1" class="pro-input text-blue-400" onchange="app.updateObjectFromUI()">
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-[40px_1fr] gap-2 items-center">
+                        <span class="text-gray-400">Rot</span>
+                        <div class="grid grid-cols-3 gap-1">
+                            <input type="number" id="inp-rot-x" step="5" class="pro-input text-red-400" onchange="app.updateObjectFromUI()">
+                            <input type="number" id="inp-rot-y" step="5" class="pro-input text-green-400" onchange="app.updateObjectFromUI()">
+                            <input type="number" id="inp-rot-z" step="5" class="pro-input text-blue-400" onchange="app.updateObjectFromUI()">
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-[40px_1fr] gap-2 items-center">
+                        <span class="text-gray-400">Scale</span>
+                        <div class="grid grid-cols-3 gap-1">
+                            <input type="number" id="inp-scale-x" step="0.1" class="pro-input text-red-400" onchange="app.updateObjectFromUI()">
+                            <input type="number" id="inp-scale-y" step="0.1" class="pro-input text-green-400" onchange="app.updateObjectFromUI()">
+                            <input type="number" id="inp-scale-z" step="0.1" class="pro-input text-blue-400" onchange="app.updateObjectFromUI()">
+                        </div>
+                    </div>
+
+                    <!-- PHYSICS -->
+                    <div class="h-[1px] bg-[#3e3e3e] my-1"></div>
+                    <div class="text-[10px] font-bold text-gray-500 uppercase tracking-wider flex justify-between">
+                        <span>Physics</span> <i class="fa-solid fa-atom text-gray-600"></i>
+                    </div>
+                    <div class="flex items-center justify-between">
+                        <span class="text-gray-400">Enable Physics</span>
+                        <input type="checkbox" id="phys-enabled" class="accent-[#eb7100]" onchange="app.togglePhysics()">
+                    </div>
+                    <div id="phys-settings" class="hidden flex-col gap-2 mt-1 pl-2 border-l border-[#444]">
+                        <div class="flex flex-col gap-1">
+                             <div class="flex justify-between"><span class="text-xs text-gray-400">Mass (0=Static)</span> <span id="val-mass" class="text-[9px] text-gray-500">1</span></div>
+                             <input type="range" id="phys-mass" min="0" max="10" step="0.5" value="1" oninput="app.updatePhysicsProps()">
+                        </div>
+                        <div class="flex flex-col gap-1">
+                             <div class="flex justify-between"><span class="text-xs text-gray-400">Bounciness</span> <span id="val-bounce" class="text-[9px] text-gray-500">0.3</span></div>
+                             <input type="range" id="phys-bounce" min="0" max="1" step="0.1" value="0.3" oninput="app.updatePhysicsProps()">
+                        </div>
+                    </div>
+
+                    <!-- Sculpt Settings -->
+                    <div id="sculpt-settings" class="hidden mt-4 pt-4 border-t border-[#444]">
+                        <div class="text-[10px] font-bold text-[#eb7100] uppercase tracking-wider mb-2">Brush Settings</div>
+                        <div class="flex gap-2 mb-3">
+                            <button id="brush-add" onclick="app.setSculptDirection(1)" class="flex-1 py-1 bg-[#4772b3] text-white text-xs rounded text-center border border-[#2e5691]">Grow</button>
+                            <button id="brush-sub" onclick="app.setSculptDirection(-1)" class="flex-1 py-1 bg-[#333] text-gray-300 text-xs rounded text-center border border-[#444]">Carve</button>
+                        </div>
+                        <div class="flex flex-col gap-1 mb-2">
+                             <span class="text-xs text-gray-400">Radius</span>
+                             <input type="range" id="sculpt-radius" min="0.1" max="2.0" step="0.1" value="0.5" oninput="app.sculptBrushSize = parseFloat(this.value)">
+                        </div>
+                         <div class="flex flex-col gap-1">
+                             <span class="text-xs text-gray-400">Strength</span>
+                             <input type="range" id="sculpt-strength" min="0.01" max="0.2" step="0.01" value="0.05" oninput="app.sculptIntensity = parseFloat(this.value)">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Material Tab -->
+                <div id="panel-mat" class="hidden flex-col gap-4">
+                    <div class="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Surface</div>
+                    <div class="grid grid-cols-[60px_1fr] gap-2 items-center">
+                        <span class="text-gray-400">Color</span>
+                        <input type="color" id="inp-color" class="w-full h-6 rounded bg-transparent border border-[#444] cursor-pointer" oninput="app.updateMaterialFromUI()">
+                    </div>
+                    <div class="grid grid-cols-[60px_1fr] gap-2 items-center">
+                        <span class="text-gray-400">Roughness</span>
+                        <input type="range" id="inp-roughness" min="0" max="1" step="0.05" value="0.5" oninput="app.updateMaterialFromUI()">
+                    </div>
+                    <div class="grid grid-cols-[60px_1fr] gap-2 items-center">
+                        <span class="text-gray-400">Metalness</span>
+                        <input type="range" id="inp-metalness" min="0" max="1" step="0.05" value="0" oninput="app.updateMaterialFromUI()">
+                    </div>
+                    <div class="h-[1px] bg-[#3e3e3e] my-1"></div>
+                    <div class="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Textures</div>
+                    <div class="grid grid-cols-2 gap-2">
+                         <button onclick="app.applyTexture('checker')" class="pro-btn py-1 text-[10px] bg-[#333] border border-[#444]">Checkerboard</button>
+                         <button onclick="app.applyTexture('wood')" class="pro-btn py-1 text-[10px] bg-[#333] border border-[#444]">Wood</button>
+                         <button onclick="app.applyTexture('stone')" class="pro-btn py-1 text-[10px] bg-[#333] border border-[#444]">Stone</button>
+                         <button onclick="app.applyTexture('none')" class="pro-btn py-1 text-[10px] bg-[#333] border border-[#444]">None</button>
+                    </div>
+                    <div id="paint-ui" class="hidden mt-4 border-t border-[#444] pt-4">
+                        <div class="text-[10px] font-bold text-[#eb7100] uppercase tracking-wider mb-2">Manual Paint</div>
+                        <div class="flex gap-2 mb-2">
+                            <input type="color" id="paint-color" value="#ff0000" class="w-6 h-6 border-none p-0 cursor-pointer">
+                            <button onclick="app.clearTexture()" class="text-[10px] px-2 bg-[#333] border border-[#555] rounded hover:bg-[#444]">Clear Canvas</button>
+                        </div>
+                        <div class="flex justify-center bg-[#111] p-2 border border-[#333]">
+                            <canvas id="texture-canvas" width="128" height="128" class="bg-white cursor-crosshair w-32 h-32"></canvas>
+                        </div>
+                        <div class="text-[9px] text-center text-gray-600 mt-1">Draw on canvas to paint object</div>
+                    </div>
+                </div>
+
+                <!-- Particles Tab (Custom) -->
+                <div id="panel-part" class="hidden flex-col gap-4">
+                    <div class="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Custom Emitter</div>
+                    <div id="no-parts-msg" class="text-gray-500 italic text-center mt-4 text-[10px] hidden">No particles. Add from menu.</div>
+
+                    <div id="particle-controls" class="hidden flex-col gap-3 mt-2">
+                        <div class="grid grid-cols-[60px_1fr] gap-2 items-center">
+                            <span class="text-gray-400">Color</span>
+                            <input type="color" id="part-custom-color" class="w-full h-6 rounded bg-transparent border border-[#444]" oninput="app.updateParticlesCustom()">
+                        </div>
+                        <div class="flex flex-col gap-1">
+                             <div class="flex justify-between"><span class="text-xs text-gray-400">Count</span> <span id="val-pcount" class="text-[9px] text-gray-500">500</span></div>
+                             <input type="range" id="part-custom-count" min="100" max="2000" step="100" value="500" onchange="app.recreateParticles()">
+                        </div>
+                        <div class="flex flex-col gap-1">
+                             <div class="flex justify-between"><span class="text-xs text-gray-400">Size</span></div>
+                             <input type="range" id="part-custom-size" min="0.01" max="0.5" step="0.01" value="0.1" oninput="app.updateParticlesCustom()">
+                        </div>
+                        <div class="flex flex-col gap-1">
+                             <div class="flex justify-between"><span class="text-xs text-gray-400">Speed</span></div>
+                             <input type="range" id="part-custom-speed" min="0" max="0.2" step="0.01" value="0.05" oninput="app.updateParticlesCustom()">
+                        </div>
+                        <div class="flex flex-col gap-1">
+                             <div class="flex justify-between"><span class="text-xs text-gray-400">Gravity Y</span></div>
+                             <input type="range" id="part-custom-grav" min="-0.1" max="0.1" step="0.01" value="-0.02" oninput="app.updateParticlesCustom()">
+                        </div>
+                         <div class="flex flex-col gap-1">
+                             <div class="flex justify-between"><span class="text-xs text-gray-400">Spread</span></div>
+                             <input type="range" id="part-custom-spread" min="0" max="1" step="0.05" value="0.5" oninput="app.updateParticlesCustom()">
+                        </div>
+                        <button onclick="app.removeParticles()" class="pro-btn w-full py-1 bg-[#331111] border border-red-900 text-red-400 hover:bg-red-900 mt-2">Remove Emitter</button>
+                    </div>
+                </div>
+
+            </div>
+            <div id="no-selection-msg" class="absolute top-1/2 right-16 transform translate-y-12 text-center w-32 pointer-events-none opacity-100">
+                <i class="fa-solid fa-cube text-4xl text-[#333] mb-2"></i>
+                <p class="text-[10px] text-gray-600">Select an object</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- AI & Message Overlay -->
+    <div id="ai-panel">
+        <div class="bg-[#333] p-2 rounded-t flex justify-between items-center border-b border-[#111]">
+            <span class="text-xs font-bold text-gray-300"><i class="fa-solid fa-robot text-[#eb7100] mr-2"></i>Blendy AI</span>
+            <button onclick="app.toggleAI()" class="text-gray-400 hover:text-white"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        <div id="ai-messages" class="flex-1 overflow-y-auto p-2 text-xs flex flex-col gap-2">
+            <div class="ai-msg p-2 bg-[#333] rounded text-gray-300">Hello! Ask me about animation, particles, or importing models.</div>
+        </div>
+        <div class="p-2 border-t border-[#111] bg-[#222]">
+            <input type="text" id="ai-input" placeholder="Ask..." class="pro-input" onkeypress="if(event.key==='Enter') app.askAI()">
+        </div>
+    </div>
+    <div id="message-overlay" class="absolute bottom-40 left-1/2 transform -translate-x-1/2 bg-black/80 text-white px-4 py-2 rounded-full text-xs opacity-0 transition-opacity z-50 pointer-events-none">Action Completed</div>
+
+    <!-- MAIN SCRIPT -->
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { TransformControls } from 'three/addons/controls/TransformControls.js';
+        import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
+        import { OBJExporter } from 'three/addons/exporters/OBJExporter.js';
+        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+        import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
+        import * as CANNON from 'cannon-es';
+
+        class WebBlender {
+            constructor() {
+                // Core
+                this.scene = null;
+                this.camera = null;
+                this.renderer = null;
+                this.orbit = null;
+                this.transformControl = null;
+                this.raycaster = new THREE.Raycaster();
+                this.pointer = new THREE.Vector2();
+                
+                // State
+                this.objects = []; 
+                this.selectedObject = null;
+                this.mode = 'object'; 
+                this.clock = new THREE.Clock();
+                this.clipboard = null; 
+
+                // Animation
+                this.currentFrame = 0;
+                this.isPlaying = false;
+                
+                // Sculpt
+                this.sculptBrushSize = 0.5;
+                this.sculptIntensity = 0.05;
+                this.sculptDirection = 1;
+
+                // Paint
+                this.paintCanvas = document.getElementById('texture-canvas');
+                this.paintCtx = this.paintCanvas.getContext('2d');
+                this.setupPaintCanvas();
+
+                // Physics
+                this.world = null;
+                this.physicsBodies = new Map(); // Mesh UUID -> Cannon Body
+
+                this.init();
+                this.initPhysics();
+                this.setupLights();
+                this.setupGrid();
+                this.setupEvents();
+                
+                // Default
+                this.addMesh('cube');
+                this.animate();
+            }
+
+            init() {
+                const container = document.getElementById('viewport');
+                this.scene = new THREE.Scene();
+                this.scene.background = new THREE.Color('#1d1d1d');
+                
+                this.camera = new THREE.PerspectiveCamera(50, container.clientWidth / container.clientHeight, 0.1, 1000);
+                this.camera.position.set(5, 4, 5);
+                this.camera.lookAt(0, 0, 0);
+
+                this.renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+                this.renderer.setPixelRatio(window.devicePixelRatio);
+                this.renderer.setSize(container.clientWidth, container.clientHeight);
+                this.renderer.shadowMap.enabled = true;
+                container.appendChild(this.renderer.domElement);
+
+                this.orbit = new OrbitControls(this.camera, this.renderer.domElement);
+                this.orbit.enableDamping = true;
+                this.orbit.dampingFactor = 0.1;
+
+                this.transformControl = new TransformControls(this.camera, this.renderer.domElement);
+                this.transformControl.addEventListener('change', () => this.renderer.render(this.scene, this.camera));
+                this.transformControl.addEventListener('dragging-changed', (e) => { 
+                    this.orbit.enabled = !e.value; 
+                    // Physics integration for drag
+                    if(e.value && this.selectedObject && this.physicsBodies.has(this.selectedObject.uuid)) {
+                         // While dragging, we temporarily set body velocity to 0 and match mesh pos
+                         const body = this.physicsBodies.get(this.selectedObject.uuid);
+                         body.velocity.set(0,0,0);
+                         body.angularVelocity.set(0,0,0);
+                    }
+                });
+                this.transformControl.addEventListener('change', () => {
+                    if(this.selectedObject && this.mode === 'object') {
+                        this.updateUIFromObject();
+                        // Sync Physics Body to visual mesh if dragging
+                        if(this.physicsBodies.has(this.selectedObject.uuid)) {
+                            const body = this.physicsBodies.get(this.selectedObject.uuid);
+                            body.position.copy(this.selectedObject.position);
+                            body.quaternion.copy(this.selectedObject.quaternion);
+                            body.velocity.set(0,0,0); // Stop it from fighting gizmo
+                        }
+                    }
+                });
+                this.scene.add(this.transformControl);
+                
+                document.getElementById('file-input').addEventListener('change', (e) => this.handleFileImport(e));
+            }
+
+            initPhysics() {
+                this.world = new CANNON.World();
+                this.world.gravity.set(0, -9.82, 0); // Earth gravity
+                this.world.broadphase = new CANNON.NaiveBroadphase();
+                this.world.solver.iterations = 10;
+
+                // Ground Plane Physics
+                const groundShape = new CANNON.Plane();
+                const groundBody = new CANNON.Body({ mass: 0 }); // Static
+                groundBody.addShape(groundShape);
+                groundBody.quaternion.setFromEuler(-Math.PI / 2, 0, 0);
+                this.world.addBody(groundBody);
+            }
+
+            // --- PHYSICS UI & LOGIC ---
+            togglePhysics() {
+                if(!this.selectedObject) return;
+                const enabled = document.getElementById('phys-enabled').checked;
+                const mesh = this.selectedObject;
+                const settings = document.getElementById('phys-settings');
+                
+                if(enabled) {
+                    settings.classList.remove('hidden');
+                    settings.classList.add('flex');
+                    this.addPhysicsBody(mesh);
+                } else {
+                    settings.classList.add('hidden');
+                    settings.classList.remove('flex');
+                    this.removePhysicsBody(mesh);
+                }
+            }
+
+            addPhysicsBody(mesh) {
+                if(this.physicsBodies.has(mesh.uuid)) return; // Already exists
+
+                let shape;
+                // Simple shape approximation
+                if(mesh.geometry.type.includes('Box')) {
+                    const s = mesh.scale;
+                    shape = new CANNON.Box(new CANNON.Vec3(s.x/2, s.y/2, s.z/2));
+                } else if(mesh.geometry.type.includes('Sphere')) {
+                    shape = new CANNON.Sphere(mesh.geometry.parameters.radius * mesh.scale.x);
+                } else {
+                    // Fallback to box
+                    const box = new THREE.Box3().setFromObject(mesh);
+                    const size = new THREE.Vector3();
+                    box.getSize(size);
+                    shape = new CANNON.Box(new CANNON.Vec3(size.x/2, size.y/2, size.z/2));
+                }
+
+                const mass = parseFloat(document.getElementById('phys-mass').value);
+                const body = new CANNON.Body({
+                    mass: mass, 
+                    position: new CANNON.Vec3(mesh.position.x, mesh.position.y, mesh.position.z)
+                });
+                body.addShape(shape);
+                body.quaternion.copy(mesh.quaternion);
+                
+                // Material properties (Bounce)
+                const mat = new CANNON.Material();
+                mat.restitution = parseFloat(document.getElementById('phys-bounce').value);
+                body.material = mat;
+
+                this.world.addBody(body);
+                this.physicsBodies.set(mesh.uuid, body);
+            }
+
+            removePhysicsBody(mesh) {
+                if(this.physicsBodies.has(mesh.uuid)) {
+                    this.world.removeBody(this.physicsBodies.get(mesh.uuid));
+                    this.physicsBodies.delete(mesh.uuid);
+                }
+            }
+
+            updatePhysicsProps() {
+                if(!this.selectedObject || !this.physicsBodies.has(this.selectedObject.uuid)) return;
+                const body = this.physicsBodies.get(this.selectedObject.uuid);
+                
+                const m = parseFloat(document.getElementById('phys-mass').value);
+                document.getElementById('val-mass').innerText = m;
+                body.mass = m;
+                body.updateMassProperties(); // Important!
+                if(m === 0) {
+                    body.type = CANNON.Body.STATIC;
+                    body.velocity.set(0,0,0);
+                } else {
+                    body.type = CANNON.Body.DYNAMIC;
+                    body.wakeUp();
+                }
+
+                const b = parseFloat(document.getElementById('phys-bounce').value);
+                document.getElementById('val-bounce').innerText = b;
+                if(body.material) body.material.restitution = b;
+            }
+
+            // --- PARTICLES (CUSTOM) ---
+            addParticleSystem() {
+                if(!this.selectedObject) {
+                    this.addMesh('cube'); 
+                    this.showMessage('Created Emitter Host');
+                }
+                
+                // Check if exists
+                if(this.selectedObject.userData.particleSystem) {
+                    this.switchTab('part');
+                    return; // Already has one
+                }
+
+                // Default Values
+                const config = {
+                    count: 500,
+                    color: '#ffffff',
+                    size: 0.1,
+                    speed: 0.05,
+                    gravity: -0.02,
+                    spread: 0.5
+                };
+                this.createParticleMesh(config);
+                
+                this.switchTab('part');
+                document.getElementById('particle-controls').classList.remove('hidden');
+                document.getElementById('particle-controls').classList.add('flex');
+                document.getElementById('no-parts-msg').classList.add('hidden');
+            }
+
+            createParticleMesh(cfg) {
+                if(this.selectedObject.userData.particleSystem) this.removeParticles();
+
+                const geo = new THREE.BufferGeometry();
+                const pos = new Float32Array(cfg.count * 3);
+                const vel = []; 
+                const life = []; 
+
+                for(let i=0; i<cfg.count; i++) {
+                    pos[i*3] = 0; pos[i*3+1] = 0; pos[i*3+2] = 0; // Start at center
+                    // Initial random Velocity based on spread
+                    vel.push({
+                        x: (Math.random()-0.5) * cfg.spread,
+                        y: (Math.random()-0.5) * cfg.spread,
+                        z: (Math.random()-0.5) * cfg.spread
+                    });
+                    life.push(Math.random() * 100); // Random start life
+                }
+
+                geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+                const mat = new THREE.PointsMaterial({ color: cfg.color, size: cfg.size, transparent: true, opacity: 0.8 });
+                const points = new THREE.Points(geo, mat);
+                
+                points.userData = { velocities: vel, lifes: life, config: cfg };
+                this.selectedObject.add(points);
+                this.selectedObject.userData.particleSystem = points;
+            }
+
+            recreateParticles() {
+                if(!this.selectedObject || !this.selectedObject.userData.particleSystem) return;
+                const cfg = this.getParticleConfigFromUI();
+                this.createParticleMesh(cfg);
+                document.getElementById('val-pcount').innerText = cfg.count;
+            }
+
+            updateParticlesCustom() {
+                if(!this.selectedObject || !this.selectedObject.userData.particleSystem) return;
+                const sys = this.selectedObject.userData.particleSystem;
+                const cfg = this.getParticleConfigFromUI();
+                
+                // Update non-destructive props
+                sys.material.color.set(cfg.color);
+                sys.material.size = cfg.size;
+                // Store dynamics in userData
+                sys.userData.config = cfg;
+            }
+
+            getParticleConfigFromUI() {
+                return {
+                    count: parseInt(document.getElementById('part-custom-count').value),
+                    color: document.getElementById('part-custom-color').value,
+                    size: parseFloat(document.getElementById('part-custom-size').value),
+                    speed: parseFloat(document.getElementById('part-custom-speed').value),
+                    gravity: parseFloat(document.getElementById('part-custom-grav').value),
+                    spread: parseFloat(document.getElementById('part-custom-spread').value)
+                };
+            }
+
+            animateParticles() {
+                this.objects.forEach(obj => {
+                    const sys = obj.userData.particleSystem;
+                    if(sys) {
+                        const positions = sys.geometry.attributes.position.array;
+                        const vels = sys.userData.velocities;
+                        const cfg = sys.userData.config;
+
+                        for(let i=0; i < vels.length; i++) {
+                            // Apply velocity + gravity
+                            positions[i*3] += vels[i].x * cfg.speed;
+                            positions[i*3+1] += (vels[i].y * cfg.speed) + cfg.gravity; 
+                            positions[i*3+2] += vels[i].z * cfg.speed;
+
+                            // Reset if too far
+                            if(Math.abs(positions[i*3]) > 2 || Math.abs(positions[i*3+1]) > 2 || Math.abs(positions[i*3+2]) > 2) {
+                                positions[i*3] = 0; positions[i*3+1] = 0; positions[i*3+2] = 0;
+                                vels[i] = {
+                                    x: (Math.random()-0.5) * cfg.spread,
+                                    y: (Math.random()-0.5) * cfg.spread,
+                                    z: (Math.random()-0.5) * cfg.spread
+                                };
+                            }
+                        }
+                        sys.geometry.attributes.position.needsUpdate = true;
+                    }
+                });
+            }
+
+            // --- STANDARD STUFF ---
+            setupLights() {
+                const ambient = new THREE.AmbientLight(0xffffff, 0.5);
+                this.scene.add(ambient);
+                const dir = new THREE.DirectionalLight(0xffffff, 2);
+                dir.position.set(5, 10, 7);
+                dir.castShadow = true;
+                this.scene.add(dir);
+            }
+            setupGrid() {
+                const grid = new THREE.GridHelper(50, 50, 0x444444, 0x222222);
+                this.scene.add(grid);
+                this.scene.add(new THREE.AxesHelper(1));
+            }
+            setupEvents() {
+                window.addEventListener('resize', () => this.onResize());
+                const vp = document.getElementById('viewport');
+                vp.addEventListener('pointerdown', (e) => this.onPointerDown(e));
+                vp.addEventListener('pointermove', (e) => this.onPointerMove(e));
+                window.addEventListener('keydown', (e) => this.onKeyDown(e));
+            }
+            addMesh(type) {
+                let geo, mat = new THREE.MeshStandardMaterial({color:0xcccccc, roughness:0.5});
+                if(type==='cube') geo = new THREE.BoxGeometry(1,1,1,20,20,20);
+                else if(type==='sphere') geo = new THREE.SphereGeometry(0.7,32,32);
+                else if(type==='plane') { geo = new THREE.PlaneGeometry(2,2,20,20); mat.side=THREE.DoubleSide; }
+                if(!geo) return;
+                const mesh = new THREE.Mesh(geo, mat);
+                mesh.castShadow=true; mesh.receiveShadow=true;
+                if(type==='plane') mesh.rotation.x = -Math.PI/2; else mesh.position.y=0.5;
+                mesh.userData.keyframes = {};
+                this.scene.add(mesh);
+                this.objects.push(mesh);
+                this.selectObject(mesh);
+            }
+            // --- UPDATE & RENDER ---
+            animate() {
+                requestAnimationFrame(() => this.animate());
+                
+                // Step Physics
+                if(this.world) {
+                    this.world.step(1/60);
+                    // Sync Visuals
+                    for (const [uuid, body] of this.physicsBodies) {
+                        const mesh = this.objects.find(o => o.uuid === uuid);
+                        if (mesh && body.type !== CANNON.Body.STATIC) { 
+                            // Only update mesh if dragging is NOT active or it's not the selected one
+                            if (!this.transformControl.dragging || mesh !== this.selectedObject) {
+                                mesh.position.copy(body.position);
+                                mesh.quaternion.copy(body.quaternion);
+                            }
+                        }
+                    }
+                }
+
+                if(this.isPlaying) {
+                    this.currentFrame += 0.5; if(this.currentFrame > 100) this.currentFrame = 0;
+                    this.scrubTimeline(Math.floor(this.currentFrame));
+                }
+                this.animateParticles();
+                this.orbit.update();
+                this.renderer.render(this.scene, this.camera);
+            }
+
+            // ... (Rest of UI Helpers, Copy/Paste, Import/Export, Sculpt, Paint remains same) ...
+            // Including crucial helpers to ensure app works fully
+            selectObject(obj) {
+                this.selectedObject = obj;
+                const panel = document.getElementById('properties-content');
+                const noSel = document.getElementById('no-selection-msg');
+                if(obj) {
+                    panel.style.opacity = '1'; panel.style.pointerEvents = 'auto'; noSel.style.opacity = '0';
+                    if(this.mode==='object') this.transformControl.attach(obj);
+                    this.updateUIFromObject();
+                    
+                    // Update Particle UI State
+                    const hasParticles = obj.userData.particleSystem;
+                    if(hasParticles) {
+                        document.getElementById('particle-controls').classList.remove('hidden');
+                        document.getElementById('particle-controls').classList.add('flex');
+                        document.getElementById('no-parts-msg').classList.add('hidden');
+                        // Fill UI with existing data
+                        const cfg = hasParticles.userData.config;
+                        if(cfg) {
+                            document.getElementById('part-custom-color').value = cfg.color;
+                            document.getElementById('part-custom-size').value = cfg.size;
+                            document.getElementById('part-custom-count').value = cfg.count;
+                        }
+                    } else {
+                        document.getElementById('particle-controls').classList.add('hidden');
+                        document.getElementById('no-parts-msg').classList.remove('hidden');
+                    }
+
+                    // Update Physics UI State
+                    const hasPhys = this.physicsBodies.has(obj.uuid);
+                    document.getElementById('phys-enabled').checked = hasPhys;
+                    if(hasPhys) {
+                        document.getElementById('phys-settings').classList.remove('hidden');
+                        document.getElementById('phys-settings').classList.add('flex');
+                        const body = this.physicsBodies.get(obj.uuid);
+                        document.getElementById('phys-mass').value = body.mass;
+                        document.getElementById('val-mass').innerText = body.mass;
+                        if(body.material) document.getElementById('phys-bounce').value = body.material.restitution;
+                    } else {
+                        document.getElementById('phys-settings').classList.add('hidden');
+                    }
+
+                } else {
+                    panel.style.opacity = '0.5'; panel.style.pointerEvents = 'none'; noSel.style.opacity = '1';
+                    this.transformControl.detach();
+                }
+            }
+
+            // Boilerplate helpers
+            onResize() { const c = document.getElementById('viewport'); this.camera.aspect=c.clientWidth/c.clientHeight; this.camera.updateProjectionMatrix(); this.renderer.setSize(c.clientWidth,c.clientHeight); }
+            onPointerDown(e) {
+                const rect = document.getElementById('viewport').getBoundingClientRect();
+                this.pointer.x = ((e.clientX - rect.left) / rect.width) * 2 - 1; this.pointer.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+                this.raycaster.setFromCamera(this.pointer, this.camera);
+                if(this.mode === 'sculpt') { const hits = this.raycaster.intersectObjects(this.objects, true); if(hits.length) { this.orbit.enabled=false; this.sculpt(hits[0]); } return; }
+                const hits = this.raycaster.intersectObjects(this.objects, true);
+                if(hits.length > 0) {
+                    let target = hits[0].object; while(target.parent && target.parent.type !== 'Scene') { if(target.userData.keyframes) target = target.parent; else break; }
+                    if(this.selectedObject !== target) this.selectObject(target);
+                } else { this.selectObject(null); }
+            }
+            onPointerMove(e) { if(this.mode==='sculpt'&&!this.orbit.enabled){ const rect=document.getElementById('viewport').getBoundingClientRect(); this.pointer.x=((e.clientX-rect.left)/rect.width)*2-1; this.pointer.y=-((e.clientY-rect.top)/rect.height)*2+1; this.raycaster.setFromCamera(this.pointer,this.camera); const hits=this.raycaster.intersectObjects(this.objects,true); if(hits.length)this.sculpt(hits[0]); } }
+            
+            sculpt(hit){
+                 const mesh = hit.object; if(!mesh.geometry.isBufferGeometry) return; const pos = mesh.geometry.attributes.position; const localPoint = mesh.worldToLocal(hit.point.clone());
+                 const direction = this.sculptDirection; const radiusSq = this.sculptBrushSize * this.sculptBrushSize;
+                 for(let i=0; i<pos.count; i++) { const v = new THREE.Vector3().fromBufferAttribute(pos, i); const distSq = v.distanceToSquared(localPoint); if(distSq < radiusSq) { const factor = (1 - distSq/radiusSq) * this.sculptIntensity * direction; v.addScaledVector(new THREE.Vector3().fromBufferAttribute(mesh.geometry.attributes.normal, i), factor); pos.setXYZ(i, v.x, v.y, v.z); } }
+                 pos.needsUpdate = true; mesh.geometry.computeVertexNormals();
+            }
+            
+            setSculptDirection(dir) {
+                this.sculptDirection = dir;
+                document.getElementById('brush-add').className = dir === 1 ? "flex-1 py-1 bg-[#4772b3] text-white text-xs rounded text-center border border-[#2e5691]" : "flex-1 py-1 bg-[#333] text-gray-300 text-xs rounded text-center border border-[#444]";
+                document.getElementById('brush-sub').className = dir === -1 ? "flex-1 py-1 bg-[#4772b3] text-white text-xs rounded text-center border border-[#2e5691]" : "flex-1 py-1 bg-[#333] text-gray-300 text-xs rounded text-center border border-[#444]";
+            }
+
+            zoom(d){ const v=new THREE.Vector3(); this.camera.getWorldDirection(v); this.camera.position.addScaledVector(v,d*2); this.orbit.update(); }
+            deleteSelected() { if(!this.selectedObject)return; this.removePhysicsBody(this.selectedObject); this.scene.remove(this.selectedObject); this.objects=this.objects.filter(o=>o!==this.selectedObject); this.selectObject(null); }
+            setTransformMode(m){ document.querySelectorAll('.pro-btn').forEach(b=>b.classList.remove('active')); const map={select:'tool-select',translate:'tool-translate',rotate:'tool-rotate',scale:'tool-scale'}; if(map[m])document.getElementById(map[m]).classList.add('active'); if(m==='select')this.transformControl.detach(); else {this.transformControl.setMode(m); if(this.selectedObject)this.transformControl.attach(this.selectedObject);} }
+            
+            // Re-adding paint/texture helpers
+            applyTexture(t){ if(!this.selectedObject||!this.selectedObject.isMesh)return; const c=document.createElement('canvas');c.width=512;c.height=512;const ctx=c.getContext('2d');
+            if(t==='checker'){ctx.fillStyle='#fff';ctx.fillRect(0,0,512,512);ctx.fillStyle='#444';for(let y=0;y<512;y+=64)for(let x=0;x<512;x+=64)if((x/64+y/64)%2===0)ctx.fillRect(x,y,64,64);}
+            else if(t==='wood'){ctx.fillStyle='#8B4513';ctx.fillRect(0,0,512,512);ctx.strokeStyle='#65330a';for(let i=0;i<100;i++){ctx.beginPath();ctx.moveTo(0,Math.random()*512);ctx.bezierCurveTo(100,Math.random()*512,400,Math.random()*512,512,Math.random()*512);ctx.stroke();}}
+            else if(t==='stone'){ctx.fillStyle='#777';ctx.fillRect(0,0,512,512);for(let i=0;i<5000;i++){ctx.fillStyle=Math.random()>.5?'#999':'#555';ctx.fillRect(Math.random()*512,Math.random()*512,2,2);}}
+            else if(t==='none'){this.selectedObject.material.map=null;this.selectedObject.material.needsUpdate=true;return;}
+            this.selectedObject.material.map=new THREE.CanvasTexture(c);this.selectedObject.material.needsUpdate=true;}
+            
+            setupPaintCanvas() { this.paintCtx.fillStyle='white';this.paintCtx.fillRect(0,0,128,128);let d=false;const c=this.paintCanvas;c.addEventListener('mousedown',(e)=>{d=true;this.draw(e)});c.addEventListener('mousemove',(e)=>{if(d)this.draw(e)});window.addEventListener('mouseup',()=>d=false); }
+            draw(e){const r=this.paintCanvas.getBoundingClientRect();this.paintCtx.fillStyle=document.getElementById('paint-color').value;this.paintCtx.beginPath();this.paintCtx.arc(e.clientX-r.left,e.clientY-r.top,4,0,Math.PI*2);this.paintCtx.fill();if(this.selectedObject?.material?.map)this.selectedObject.material.map.needsUpdate=true;}
+            clearTexture(){this.paintCtx.fillStyle='white';this.paintCtx.fillRect(0,0,128,128);if(this.selectedObject?.material?.map)this.selectedObject.material.map.needsUpdate=true;}
+            applyPaintTexture(obj){if(!obj.isMesh)return;const t=new THREE.CanvasTexture(this.paintCanvas);t.magFilter=THREE.NearestFilter;obj.material=new THREE.MeshStandardMaterial({map:t});document.getElementById('paint-ui').classList.remove('hidden');}
+
+            updateUIFromObject() {
+                if(!this.selectedObject) return;
+                const o = this.selectedObject;
+                const r = (v) => parseFloat(v.toFixed(2));
+                const deg = (v) => Math.round(THREE.MathUtils.radToDeg(v));
+                document.getElementById('inp-pos-x').value = r(o.position.x); document.getElementById('inp-pos-y').value = r(o.position.y); document.getElementById('inp-pos-z').value = r(o.position.z);
+                document.getElementById('inp-rot-x').value = deg(o.rotation.x); document.getElementById('inp-rot-y').value = deg(o.rotation.y); document.getElementById('inp-rot-z').value = deg(o.rotation.z);
+                document.getElementById('inp-scale-x').value = r(o.scale.x); document.getElementById('inp-scale-y').value = r(o.scale.y); document.getElementById('inp-scale-z').value = r(o.scale.z);
+            }
+            updateObjectFromUI() {
+                if(!this.selectedObject) return;
+                const o = this.selectedObject;
+                const f = (id) => parseFloat(document.getElementById(id).value);
+                const rad = (id) => THREE.MathUtils.degToRad(f(id));
+                o.position.set(f('inp-pos-x'), f('inp-pos-y'), f('inp-pos-z'));
+                o.rotation.set(rad('inp-rot-x'), rad('inp-rot-y'), rad('inp-rot-z'));
+                o.scale.set(f('inp-scale-x'), f('inp-scale-y'), f('inp-scale-z'));
+            }
+            switchTab(t){ ['obj','mat','part'].forEach(id=>{document.getElementById(`tab-${id}`).classList.remove('active');document.getElementById(`panel-${id}`).classList.add('hidden');document.getElementById(`panel-${id}`).classList.remove('flex');});document.getElementById(`tab-${t}`).classList.add('active');document.getElementById(`panel-${t}`).classList.remove('hidden');document.getElementById(`panel-${t}`).classList.add('flex'); }
+            setMode(m){ 
+                this.mode=m; document.querySelectorAll('button[id^="mode-"]').forEach(b=>b.className="px-3 py-0.5 rounded-sm hover:bg-[#3d3d3d] text-gray-400"); 
+                document.getElementById(`mode-${m}`).className="px-3 py-0.5 rounded-sm bg-[#4772b3] text-white";
+                document.getElementById('mode-indicator').innerText = m.charAt(0).toUpperCase()+m.slice(1)+" Mode";
+                if(m==='object'){this.transformControl.attach(this.selectedObject);document.getElementById('sculpt-settings').classList.add('hidden');document.getElementById('toolbar-object').classList.remove('hidden');}
+                else {this.transformControl.detach();document.getElementById('sculpt-settings').classList.remove('hidden');document.getElementById('toolbar-object').classList.add('hidden');this.switchTab(m==='paint'?'mat':'obj');}
+            }
+            triggerImport(){document.getElementById('file-input').click();}
+            handleFileImport(e){
+                const f=e.target.files[0];if(!f)return;const u=URL.createObjectURL(f);const x=f.name.split('.').pop();
+                const l=(o)=>{const b=new THREE.Box3().setFromObject(o);const s=b.getSize(new THREE.Vector3()).length();o.scale.setScalar(2/s);o.position.y=0;this.scene.add(o);this.objects.push(o);o.userData.keyframes={};this.selectObject(o);URL.revokeObjectURL(u);e.target.value='';};
+                if(x==='glb'||x==='gltf')new GLTFLoader().load(u,(g)=>l(g.scene));else if(x==='obj')new OBJLoader().load(u,l);
+            }
+            copySelection(){ if(this.selectedObject) { this.clipboard=this.selectedObject.clone(); this.showMessage('Copied'); } }
+            pasteSelection(){ if(this.clipboard){ const n=this.clipboard.clone(); if(n.material)n.material=n.material.clone(); n.position.addScalar(1); this.scene.add(n); this.objects.push(n); this.selectObject(n); this.showMessage('Pasted'); } }
+            showMessage(t){const e=document.getElementById('message-overlay');e.innerText=t;e.style.opacity='1';setTimeout(()=>e.style.opacity='0',1500);}
+            toggleAI(){const p=document.getElementById('ai-panel');p.style.display=p.style.display==='flex'?'none':'flex';}
+            askAI(){const i=document.getElementById('ai-input');document.getElementById('ai-messages').innerHTML+=`<div class="p-2 bg-[#4772b3] rounded text-white self-end mb-2">${i.value}</div>`;i.value='';setTimeout(()=>document.getElementById('ai-messages').innerHTML+=`<div class="p-2 bg-[#333] rounded text-gray-300 mb-2">Check the 'Physics' section in the Object tab to make things fall!</div>`,500);}
+            removeParticles(){if(this.selectedObject?.userData?.particleSystem){this.selectedObject.remove(this.selectedObject.userData.particleSystem);delete this.selectedObject.userData.particleSystem;document.getElementById('particle-controls').classList.add('hidden');document.getElementById('no-parts-msg').classList.remove('hidden');}}
+            updateMaterialFromUI(){if(this.selectedObject?.material){this.selectedObject.material.color.set(document.getElementById('inp-color').value);this.selectedObject.material.roughness=parseFloat(document.getElementById('inp-roughness').value);this.selectedObject.material.metalness=parseFloat(document.getElementById('inp-metalness').value);}}
+            exportScene(f){const i=this.selectedObject||this.scene;if(f==='glb')new GLTFExporter().parse(i,(r)=>this.save(new Blob([r],{type:'app/octet'}),'s.glb'),{binary:true});else new OBJExporter().parse(i,(r)=>this.save(new Blob([r],{type:'text/plain'}),'s.obj'));}
+            save(b,n){const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=n;a.click();}
+            onKeyDown(e){if(e.target.tagName==='INPUT')return;const k=e.key.toLowerCase();if(k==='q')this.setTransformMode('select');if(k==='g')this.setTransformMode('translate');if(k==='r')this.setTransformMode('rotate');if(k==='s')this.setTransformMode('scale');if(k==='x')this.deleteSelected();if(k===' ')this.togglePlayback();if((e.ctrlKey||e.metaKey)&&k==='c')this.copySelection();if((e.ctrlKey||e.metaKey)&&k==='v')this.pasteSelection();}
+        }
+
+        window.app = new WebBlender();
+    </script>
+</body>
+</html>
